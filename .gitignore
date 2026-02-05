@@ -1,0 +1,52 @@
+### Node.js dependencies and logs
+# Ignore Node.js dependency directories anywhere in the repo
+node_modules/
+
+# Common package manager debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+### Python dependencies and build artifacts
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environment directories
+.venv/
+venv/
+ENV/
+env/
+
+# Distribution / packaging
+.eggs/
+*.egg-info/
+dist/
+build/
+eggs/
+develop-eggs/
+sdist/
+wheels/
+share/python-wheels/
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+.tox/
+.nox/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+htmlcov/
+.pytest_cache/
+.hypothesis/
+
+# Type checker caches
+.mypy_cache/
+

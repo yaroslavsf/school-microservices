@@ -1,0 +1,233 @@
+name: mvp-microservices-platform
+
+networks:
+  edge:
+  internal:
+
+volumes:
+  traefik_letsencrypt:
+  grafana_data:
+  prometheus_data:
+  loki_data:
+  tempo_data:
+  authentik_db_data:
+  authentik_redis_data:
+
+services:
+  # ----------------------------
+  # Reverse Proxy
+  # ----------------------------
+  traefik:
+    image: traefik:v3.1
+    command:
+      - --api.dashboard=true
+      - --api.insecure=true
+
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+
+      - --entrypoints.web.address=:80
+      # TLS можно включить позже; для MVP оставляем HTTP
+      # - --entrypoints.websecure.address=:443
+
+      # (опционально) Логи Traefik в stdout
+      - --log.level=INFO
+      - --accesslog=true
+    ports:
+      - "80:80"
+      - "8080:8080" # Traefik dashboard (dev)
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik_letsencrypt:/letsencrypt
+    networks:
+      - edge
+      - internal
+
+  # ----------------------------
+  # Python service (FastAPI)
+  # ----------------------------
+  py-service:
+    build:
+      context: ../py-service
+      dockerfile: Dockerfile
+    environment:
+      - SERVICE_NAME=py-service
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+      - OTEL_SERVICE_NAME=py-service
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.py.rule=Host(`py.localhost`)
+      - traefik.http.routers.py.entrypoints=web
+      - traefik.http.services.py.loadbalancer.server.port=8000
+    networks:
+      - internal
+
+  # ----------------------------
+  # JS service (Fastify)
+  # ----------------------------
+  js-service:
+    build:
+      context: ../js-service
+      dockerfile: Dockerfile
+    environment:
+      - SERVICE_NAME=js-service
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+      - OTEL_SERVICE_NAME=js-service
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.js.rule=Host(`js.localhost`)
+      - traefik.http.routers.js.entrypoints=web
+      - traefik.http.services.js.loadbalancer.server.port=3000
+    networks:
+      - internal
+
+  # ----------------------------
+  # Grafana
+  # ----------------------------
+  grafana:
+    image: grafana/grafana:11.1.0
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SERVER_ROOT_URL=http://grafana.localhost
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.grafana.rule=Host(`grafana.localhost`)
+      - traefik.http.routers.grafana.entrypoints=web
+      - traefik.http.services.grafana.loadbalancer.server.port=3000
+    networks:
+      - internal
+    depends_on:
+      - prometheus
+      - loki
+      - tempo
+
+  # ----------------------------
+  # Loki (logs storage)
+  # ----------------------------
+  loki:
+    image: grafana/loki:3.1.1
+    command: -config.file=/etc/loki/config.yml
+    volumes:
+      - loki_data:/loki
+      - ./loki/config.yml:/etc/loki/config.yml:ro
+    networks:
+      - internal
+
+  # Promtail (log collector)
+  promtail:
+    image: grafana/promtail:3.1.1
+    command: -config.file=/etc/promtail/config.yml
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./promtail/config.yml:/etc/promtail/config.yml:ro
+    networks:
+      - internal
+    depends_on:
+      - loki
+
+  # ----------------------------
+  # Prometheus (metrics)
+  # ----------------------------
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+    volumes:
+      - prometheus_data:/prometheus
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    networks:
+      - internal
+
+  # ----------------------------
+  # Tempo (traces storage)
+  # ----------------------------
+  tempo:
+    image: grafana/tempo:2.6.1
+    command: [ "-config.file=/etc/tempo/tempo.yml" ]
+    volumes:
+      - tempo_data:/var/tempo
+      - ./tempo/tempo.yml:/etc/tempo/tempo.yml:ro
+    networks:
+      - internal
+
+  # OpenTelemetry Collector
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.109.0
+    command: [ "--config=/etc/otel/config.yml" ]
+    volumes:
+      - ./otel/config.yml:/etc/otel/config.yml:ro
+    networks:
+      - internal
+    depends_on:
+      - tempo
+
+  # ----------------------------
+  # Authentik (OIDC / SSO)
+  # ----------------------------
+  authentik-db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=authentik
+      - POSTGRES_PASSWORD=authentik
+      - POSTGRES_DB=authentik
+    volumes:
+      - authentik_db_data:/var/lib/postgresql/data
+    networks:
+      - internal
+
+  authentik-redis:
+    image: redis:7-alpine
+    command: [ "redis-server", "--save", "60", "1", "--loglevel", "warning" ]
+    volumes:
+      - authentik_redis_data:/data
+    networks:
+      - internal
+
+  authentik-server:
+    image: ghcr.io/goauthentik/server:2024.8.3
+    environment:
+      - AUTHENTIK_SECRET_KEY=please-change-me
+      - AUTHENTIK_POSTGRESQL__HOST=authentik-db
+      - AUTHENTIK_POSTGRESQL__USER=authentik
+      - AUTHENTIK_POSTGRESQL__NAME=authentik
+      - AUTHENTIK_POSTGRESQL__PASSWORD=authentik
+      - AUTHENTIK_REDIS__HOST=authentik-redis
+      - AUTHENTIK_ERROR_REPORTING__ENABLED=false
+    volumes:
+      - ./authentik/media:/media
+      - ./authentik/custom-templates:/templates
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.authentik.rule=Host(`auth.localhost`)
+      - traefik.http.routers.authentik.entrypoints=web
+      - traefik.http.services.authentik.loadbalancer.server.port=9000
+    networks:
+      - internal
+    depends_on:
+      - authentik-db
+      - authentik-redis
+
+  authentik-worker:
+    image: ghcr.io/goauthentik/server:2024.8.3
+    environment:
+      - AUTHENTIK_SECRET_KEY=please-change-me
+      - AUTHENTIK_POSTGRESQL__HOST=authentik-db
+      - AUTHENTIK_POSTGRESQL__USER=authentik
+      - AUTHENTIK_POSTGRESQL__NAME=authentik
+      - AUTHENTIK_POSTGRESQL__PASSWORD=authentik
+      - AUTHENTIK_REDIS__HOST=authentik-redis
+      - AUTHENTIK_ERROR_REPORTING__ENABLED=false
+    command: [ "worker" ]
+    volumes:
+      - ./authentik/media:/media
+      - ./authentik/custom-templates:/templates
+    networks:
+      - internal
+    depends_on:
+      - authentik-db
+      - authentik-redis
