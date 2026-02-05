@@ -12,6 +12,9 @@ volumes:
   tempo_data:
   authentik_db_data:
   authentik_redis_data:
+  py_db_data:
+  js_db_data:
+  rabbitmq_data:
 
 services:
   # ----------------------------
@@ -54,11 +57,28 @@ services:
       - SERVICE_NAME=py-service
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
       - OTEL_SERVICE_NAME=py-service
+      - DATABASE_URL=postgresql+psycopg://py:py@py-db:5432/py_service
+      - AMQP_URL=amqp://app:app@rabbitmq:5672/
     labels:
       - traefik.enable=true
       - traefik.http.routers.py.rule=Host(`py.localhost`)
       - traefik.http.routers.py.entrypoints=web
       - traefik.http.services.py.loadbalancer.server.port=8000
+    networks:
+      - internal
+    depends_on:
+      - py-db
+      - rabbitmq
+      - otel-collector
+
+  py-db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=py
+      - POSTGRES_PASSWORD=py
+      - POSTGRES_DB=py_service
+    volumes:
+      - py_db_data:/var/lib/postgresql/data
     networks:
       - internal
 
@@ -73,11 +93,28 @@ services:
       - SERVICE_NAME=js-service
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
       - OTEL_SERVICE_NAME=js-service
+      - DATABASE_URL=postgresql://js:js@js-db:5432/js_service
+      - AMQP_URL=amqp://app:app@rabbitmq:5672/
     labels:
       - traefik.enable=true
       - traefik.http.routers.js.rule=Host(`js.localhost`)
       - traefik.http.routers.js.entrypoints=web
       - traefik.http.services.js.loadbalancer.server.port=3000
+    networks:
+      - internal
+    depends_on:
+      - js-db
+      - rabbitmq
+      - otel-collector
+
+  js-db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=js
+      - POSTGRES_PASSWORD=js
+      - POSTGRES_DB=js_service
+    volumes:
+      - js_db_data:/var/lib/postgresql/data
     networks:
       - internal
 
@@ -232,3 +269,19 @@ services:
     depends_on:
       - authentik-db
       - authentik-redis
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    environment:
+      - RABBITMQ_DEFAULT_USER=app
+      - RABBITMQ_DEFAULT_PASS=app
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - internal
+    # UI удобно в деве открыть через Traefik (опционально)
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.rabbitmq.rule=Host(`rabbitmq.localhost`)
+      - traefik.http.routers.rabbitmq.entrypoints=web
+      - traefik.http.services.rabbitmq.loadbalancer.server.port=15672
