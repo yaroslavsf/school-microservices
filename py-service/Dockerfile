@@ -12,7 +12,8 @@ ENV UV_LINK_MODE=copy
 WORKDIR /app
 
 # Place executables in the environment at the front of the path
-ENV PATH="/зн-/.venv/bin:$PATH"
+# uv creates a local virtualenv at /app/.venv
+ENV PATH="/app/.venv/bin:$PATH"
 
 # Install dependencies first (better layer caching)
 COPY pyproject.toml /app/
@@ -28,5 +29,5 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 EXPOSE 8000
 
-# Run FastAPI app with multiple workers, listen on all interfaces
-CMD ["fastapi", "run", "--workers", "4", "--host", "0.0.0.0", "main.py"]
+# Run app via uvicorn (FastAPI ASGI server)
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
