@@ -13,6 +13,23 @@
   * TLS support (optional at MVP stage)
   * Authentication middleware support
 
+> TODO checklist for Yari
+1.HTTPS на локалке
+https://py.localhost работает (self-signed или mkcert).
+👉 Показать: TLS termination на edge.
+2.HTTP → HTTPS redirect
+http://py.localhost → автоматический редирект на HTTPS.
+👉 Показать: security policy на уровне proxy.
+3.TLS на Traefik, а не в сервисах
+Сервисы слушают HTTP, Traefik — HTTPS.
+👉 Показать: правильную edge-архитектуру.
+4.Forward-auth (authentik) в Traefik
+Без логина → 401 / redirect.
+👉 Показать: аутентификация вынесена из сервисов.
+5.Та же конфигурация = production-ready
+Пояснение: в проде меняется только cert resolver (Let’s Encrypt).
+👉 Показать: локалка ≠ костыль, а реплика прод-схемы.
+
 ### 1.3 Application Services
 
 * **Python Service**
