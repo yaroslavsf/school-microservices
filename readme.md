@@ -1,4 +1,12 @@
 # Microservices
+## Setup
+1. Run all services `docker compose --env-file .env -f infra/docker-compose.yml up -d`
+2. Create admin and obtain the api key in the terminal from authentik `./infra/authentik-admin-key.sh .env`
+3. Paste the api key in the `.env` file
+4. Create infrastructure for authentik `./infra/authentik-infra.sh .env`
+
+> TODO: check last step since the token seems to be invalid. update .env.sample. make the proper handling if the admin is created to obtain the token anyway
+
 ## 1. Technology and Tooling Choices
 ### 1.1 Containerization and Runtime
 

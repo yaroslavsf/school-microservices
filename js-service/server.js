@@ -1,12 +1,9 @@
-import express from "express";
+import Fastify from 'fastify';
 
-const app = express();
-const PORT = process.env.PORT || 3000;
+const app = Fastify({ logger: true });
 
-app.get("/hello", (req, res) => {
-  res.type("text").send("Hello, world!");
+app.get('/', async () => {
+  return { hello: 'world' };
 });
 
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Server listening on http://0.0.0.0:${PORT}`);
-});
+await app.listen({ port: 3000 });
